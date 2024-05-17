@@ -1,0 +1,18 @@
+device_name = "Music Player"
+server_ip = "https://10.30.8.245:2302"
+
+[capability."Pause/Play"]
+    available = true
+    type = "button"
+
+[capability."Next"]
+    available = true
+    type = "button"
+
+[capability."Previous"]
+    available = true
+    type = "button"
+
+[capability."Volume"]
+    available = true
+    type = "slider"

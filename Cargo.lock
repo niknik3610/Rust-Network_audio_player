@@ -345,6 +345,7 @@ dependencies = [
  "NOSHP-Client",
  "clap",
  "soloud",
+ "tokio",
 ]
 
 [[package]]
