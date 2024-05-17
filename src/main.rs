@@ -2,20 +2,17 @@ mod audio_player;
 mod ui;
 
 use std::{
-    env::args,
     error::Error,
     fmt::Debug,
     fs,
-    io::{self, BufRead},
-    time::Duration,
     usize,
 };
 
 use clap::Parser;
-use soloud::{audio, AudioExt, Handle, LoadExt, Soloud, Wav};
+use soloud::{audio, AudioExt, Soloud, Wav};
 use NOSHP_Client::{
-    client::{self, ClientState, NoshpClient, Request, UserDefinedState},
-    client_config::{ClientConfig, ParsedConfig},
+    client::{ClientState, NoshpClient, Request, UserDefinedState},
+    client_config::{ClientConfig},
 };
 
 #[derive(Parser, Debug)]
