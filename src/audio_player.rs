@@ -49,6 +49,7 @@ impl AudioPlayer {
     }
     pub async fn run(mut self) {
         self.channel_handle = self.next_song();
+        self.set_volume(0.50);
 
         loop {
             //This should block
