@@ -13,13 +13,13 @@ pub enum AudioPlayerCommands {
 
 pub struct AudioPlayer {
     receiver_channel: Receiver<AudioPlayerCommands>,
-    sl:  Soloud,
+    sl: Soloud,
     wav: soloud::Wav,
     song_list: Vec<String>,
     current_song_index: usize,
     pause_state: bool,
     vol_state: f32,
-    channel_handle: soloud::Handle
+    channel_handle: soloud::Handle,
 }
 
 impl AudioPlayer {
@@ -35,7 +35,7 @@ impl AudioPlayer {
         let pause_state = false;
         let volume = 100.0;
 
-        let current_song_index = 0; 
+        let current_song_index = 0;
         return Self {
             receiver_channel,
             channel_handle: soloud::Handle::PRIMARY,
@@ -44,11 +44,11 @@ impl AudioPlayer {
             sl,
             song_list,
             vol_state: volume,
-            wav
-        }
+            wav,
+        };
     }
     pub async fn run(mut self) {
-        self.channel_handle = self.next_song(); 
+        self.channel_handle = self.next_song();
 
         loop {
             //This should block
@@ -73,9 +73,7 @@ impl AudioPlayer {
 
         println!("Exiting");
     }
-    pub fn next_song(
-        &mut self
-        ) -> soloud::Handle {
+    pub fn next_song(&mut self) -> soloud::Handle {
         if self.current_song_index >= self.song_list.len() - 1 {
             self.current_song_index = 0;
         } else {
@@ -87,17 +85,15 @@ impl AudioPlayer {
         );
         let next_song_path = &std::path::Path::new(&next_song_path_str);
         self.wav.load(next_song_path).expect(&format!(
-                "Failed to load song with path: {}",
-                next_song_path.to_str().unwrap()
-                ));
+            "Failed to load song with path: {}",
+            next_song_path.to_str().unwrap()
+        ));
 
         println!("Now Playing: {}", self.song_list[self.current_song_index]);
         return self.sl.play(&self.wav);
     }
 
-    pub fn prev_song(
-        &mut self
-        ) -> soloud::Handle {
+    pub fn prev_song(&mut self) -> soloud::Handle {
         if self.current_song_index <= 0 {
             self.current_song_index = self.song_list.len() - 1
         } else {
@@ -110,9 +106,9 @@ impl AudioPlayer {
         );
         let next_song_path = &std::path::Path::new(&next_song_path_str);
         self.wav.load(next_song_path).expect(&format!(
-                "Failed to load song with path: {}",
-                next_song_path.to_str().unwrap()
-                ));
+            "Failed to load song with path: {}",
+            next_song_path.to_str().unwrap()
+        ));
 
         println!("Now Playing: {}", self.song_list[self.current_song_index]);
         return self.sl.play(&self.wav);
@@ -127,4 +123,3 @@ impl AudioPlayer {
         self.sl.set_volume(self.channel_handle, new_vol);
     }
 }
-

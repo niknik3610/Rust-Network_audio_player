@@ -1,12 +1,10 @@
 mod audio_player;
 mod ui;
 
-use std::{
-    error::Error, fmt::Debug, fs, os::unix::thread, sync::{mpsc::channel, Arc, Mutex}, thread::Thread, usize
-};
-use std::sync::mpsc::{Receiver, Sender};
 use clap::Parser;
-use soloud::{audio, AudioExt, Handle, Soloud, Wav};
+use std::sync::mpsc::Sender;
+use std::{error::Error, fmt::Debug, sync::mpsc::channel};
+
 use NOSHP_Client::{
     client::{ClientState, NoshpClient, Request, UserDefinedState},
     client_config::ClientConfig,
@@ -21,14 +19,12 @@ struct Args {
 }
 
 struct MusicPlayerState {
-    pub sender_channel: Sender<audio_player::AudioPlayerCommands>
+    pub sender_channel: Sender<audio_player::AudioPlayerCommands>,
 }
 impl Default for MusicPlayerState {
     fn default() -> Self {
-        let (tx, rx) = channel();
-        Self {
-            sender_channel: tx
-        }
+        let (tx, _rx) = channel();
+        Self { sender_channel: tx }
     }
 }
 impl UserDefinedState for MusicPlayerState {}
@@ -40,7 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let (tx, rx) = channel();
     let player = audio_player::AudioPlayer::init(rx);
-    
+
     if args.ui {
         // let channel_handle =
         //     audio_player::next_song(&mut sl, &mut wav, &song_list, &mut current_song_index);
@@ -57,9 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // );
     } else {
         let config = ClientConfig::load_config(CONFIG_PATH).unwrap();
-        let state = MusicPlayerState {
-            sender_channel: tx,
-        };
+        let state = MusicPlayerState { sender_channel: tx };
 
         let client_handler = NoshpClient::new()
             .set_state(state)
@@ -73,9 +67,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             player.run().await;
         });
 
-        tokio::spawn(async move {
-            client_handler.await.unwrap()
-        }).await.unwrap();
+        tokio::spawn(async move { client_handler.await.unwrap() })
+            .await
+            .unwrap();
 
         music_handle.await.unwrap();
     }
@@ -83,19 +77,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn callback_toggle_pause(state: &mut ClientState<MusicPlayerState>, _req: Request) {
-    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::TogglePause).unwrap();
+    state
+        .user_state
+        .sender_channel
+        .send(audio_player::AudioPlayerCommands::TogglePause)
+        .unwrap();
 }
 
 fn callback_next(state: &mut ClientState<MusicPlayerState>, _req: Request) {
-    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::NextSong).unwrap();
+    state
+        .user_state
+        .sender_channel
+        .send(audio_player::AudioPlayerCommands::NextSong)
+        .unwrap();
 }
 
 fn callback_prev(state: &mut ClientState<MusicPlayerState>, _req: Request) {
-    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::PrevSong).unwrap();
+    state
+        .user_state
+        .sender_channel
+        .send(audio_player::AudioPlayerCommands::PrevSong)
+        .unwrap();
 }
 
 fn callback_vol(state: &mut ClientState<MusicPlayerState>, req: Request) {
     let mut volume = req.value.unwrap();
     volume = volume / 100.0;
-    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::SetVol(volume)).unwrap();
+    state
+        .user_state
+        .sender_channel
+        .send(audio_player::AudioPlayerCommands::SetVol(volume))
+        .unwrap();
 }
