@@ -2,17 +2,14 @@ mod audio_player;
 mod ui;
 
 use std::{
-    error::Error,
-    fmt::Debug,
-    fs,
-    usize,
+    error::Error, fmt::Debug, fs, os::unix::thread, sync::{mpsc::channel, Arc, Mutex}, thread::Thread, usize
 };
-
+use std::sync::mpsc::{Receiver, Sender};
 use clap::Parser;
-use soloud::{audio, AudioExt, Soloud, Wav};
+use soloud::{audio, AudioExt, Handle, Soloud, Wav};
 use NOSHP_Client::{
     client::{ClientState, NoshpClient, Request, UserDefinedState},
-    client_config::{ClientConfig},
+    client_config::ClientConfig,
 };
 
 #[derive(Parser, Debug)]
@@ -24,116 +21,81 @@ struct Args {
 }
 
 struct MusicPlayerState {
-    pub sl: Soloud,
-    pub wav: Wav,
-    pub song_list: Vec<String>,
-    pub current_song_index: usize,
-    pub channel_handle: soloud::Handle,
-    pub pause_state: bool,
-    pub volume: f32,
+    pub sender_channel: Sender<audio_player::AudioPlayerCommands>
 }
 impl Default for MusicPlayerState {
     fn default() -> Self {
+        let (tx, rx) = channel();
         Self {
-            sl: Soloud::default().unwrap(),
-            wav: audio::Wav::default(),
-            song_list: Vec::new(),
-            current_song_index: 0,
-            channel_handle: soloud::Handle::PRIMARY,
-            pause_state: false,
-            volume: 1.0,
+            sender_channel: tx
         }
     }
 }
 impl UserDefinedState for MusicPlayerState {}
 
-const CONFIG_PATH: &str = "./example_config.toml";
+const CONFIG_PATH: &str = "./config.toml";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-
-    let song_list: Vec<String> = fs::read_dir("audio_files")
-        .unwrap()
-        .map(|path| path.unwrap().file_name().into_string().unwrap())
-        .collect();
-
-    let mut sl = Soloud::default().unwrap();
-    let mut wav = audio::Wav::default();
-
-    let mut pause_state = false;
-    let mut volume = 100.0;
-
-    let mut current_song_index = 0;
-    let channel_handle =
-        audio_player::next_song(&mut sl, &mut wav, &song_list, &mut current_song_index);
-    audio_player::toggle_pause_song(&mut sl, pause_state);
-
+    let (tx, rx) = channel();
+    let player = audio_player::AudioPlayer::init(rx);
+    
     if args.ui {
-        ui::display_ui(
-            &mut sl,
-            &mut wav,
-            &song_list,
-            &mut current_song_index,
-            channel_handle,
-            &mut pause_state,
-            &mut volume,
-        );
+        // let channel_handle =
+        //     audio_player::next_song(&mut sl, &mut wav, &song_list, &mut current_song_index);
+        //
+        // audio_player::toggle_pause_song(&mut sl, pause_state);
+        // ui::display_ui(
+        //     &mut sl,
+        //     &mut wav,
+        //     &song_list,
+        //     &mut current_song_index,
+        //     channel_handle,
+        //     &mut pause_state,
+        //     &mut volume,
+        // );
     } else {
         let config = ClientConfig::load_config(CONFIG_PATH).unwrap();
-
         let state = MusicPlayerState {
-            sl,
-            wav,
-            song_list,
-            current_song_index,
-            channel_handle,
-            pause_state,
-            volume,
+            sender_channel: tx,
         };
 
-        let client_handler = NoshpClient::new();
-        client_handler
+        let client_handler = NoshpClient::new()
             .set_state(state)
             .add_callback("Pause/Play", Box::new(callback_toggle_pause))
             .add_callback("Next", Box::new(callback_next))
             .add_callback("Previous", Box::new(callback_prev))
             .add_callback("Volume", Box::new(callback_vol))
-            .run(config)
-            .await
-            .unwrap();
+            .run(config);
+
+        let music_handle = tokio::spawn(async move {
+            player.run().await;
+        });
+
+        tokio::spawn(async move {
+            client_handler.await.unwrap()
+        }).await.unwrap();
+
+        music_handle.await.unwrap();
     }
     Ok(())
 }
 
 fn callback_toggle_pause(state: &mut ClientState<MusicPlayerState>, _req: Request) {
-    state.user_state.pause_state =
-        audio_player::toggle_pause_song(&mut state.user_state.sl, state.user_state.pause_state);
+    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::TogglePause).unwrap();
 }
 
 fn callback_next(state: &mut ClientState<MusicPlayerState>, _req: Request) {
-    state.user_state.channel_handle = audio_player::next_song(
-        &mut state.user_state.sl,
-        &mut state.user_state.wav,
-        &state.user_state.song_list,
-        &mut state.user_state.current_song_index,
-    );
+    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::NextSong).unwrap();
 }
 
 fn callback_prev(state: &mut ClientState<MusicPlayerState>, _req: Request) {
-    state.user_state.channel_handle = audio_player::prev_song(
-        &mut state.user_state.sl,
-        &mut state.user_state.wav,
-        &state.user_state.song_list,
-        &mut state.user_state.current_song_index,
-    );
+    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::PrevSong).unwrap();
 }
 
 fn callback_vol(state: &mut ClientState<MusicPlayerState>, req: Request) {
-    state.user_state.volume = req.value.unwrap();
-    audio_player::set_volume(
-        &mut state.user_state.sl,
-        state.user_state.channel_handle,
-        state.user_state.volume,
-    )
+    let mut volume = req.value.unwrap();
+    volume = volume / 100.0;
+    state.user_state.sender_channel.send(audio_player::AudioPlayerCommands::SetVol(volume)).unwrap();
 }

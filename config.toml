@@ -1,5 +1,5 @@
 device_name = "Music Player"
-server_ip = "https://10.30.8.245:2302"
+server_ip = "https://10.30.10.47:2302"
 
 [capability."Pause/Play"]
     available = true

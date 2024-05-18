@@ -1,62 +1,130 @@
-use soloud::{LoadExt, Soloud, Wav};
+use soloud::{AudioExt, LoadExt, Soloud};
+use std::{fs, sync::mpsc::Receiver};
 
 pub const AUDIO_FILES_PATH: &str = "audio_files/";
-pub fn next_song(
-    sl: &mut Soloud,
-    wav: &mut soloud::Wav,
-    song_list: &Vec<String>,
-    current_song_index: &mut usize,
-) -> soloud::Handle {
-    if *current_song_index >= song_list.len() - 1 {
-        *current_song_index = 0;
-    } else {
-        *current_song_index += 1
+
+pub enum AudioPlayerCommands {
+    TogglePause,
+    NextSong,
+    PrevSong,
+    SetVol(f32),
+    Quit,
+}
+
+pub struct AudioPlayer {
+    receiver_channel: Receiver<AudioPlayerCommands>,
+    sl:  Soloud,
+    wav: soloud::Wav,
+    song_list: Vec<String>,
+    current_song_index: usize,
+    pause_state: bool,
+    vol_state: f32,
+    channel_handle: soloud::Handle
+}
+
+impl AudioPlayer {
+    pub fn init(receiver_channel: Receiver<AudioPlayerCommands>) -> Self {
+        let song_list: Vec<String> = fs::read_dir("audio_files")
+            .unwrap()
+            .map(|path| path.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        let sl = Soloud::default().unwrap();
+        let wav = soloud::audio::Wav::default();
+
+        let pause_state = false;
+        let volume = 100.0;
+
+        let current_song_index = 0; 
+        return Self {
+            receiver_channel,
+            channel_handle: soloud::Handle::PRIMARY,
+            current_song_index,
+            pause_state,
+            sl,
+            song_list,
+            vol_state: volume,
+            wav
+        }
     }
-    let next_song_path_str = &format!(
-        "{AUDIO_FILES_PATH}{}",
-        song_list[*current_song_index].clone()
-    );
-    let next_song_path = &std::path::Path::new(&next_song_path_str);
-    wav.load(next_song_path).expect(&format!(
-        "Failed to load song with path: {}",
-        next_song_path.to_str().unwrap()
-    ));
+    pub async fn run(mut self) {
+        self.channel_handle = self.next_song(); 
 
-    println!("Now Playing: {}", song_list[*current_song_index]);
-    return sl.play(wav);
-}
+        loop {
+            //This should block
+            let event = self.receiver_channel.recv();
 
-pub fn prev_song(
-    sl: &mut Soloud,
-    wav: &mut Wav,
-    song_list: &Vec<String>,
-    current_song_index: &mut usize,
-) -> soloud::Handle {
-    if *current_song_index <= 0 {
-        *current_song_index = song_list.len() - 1
-    } else {
-        *current_song_index -= 1
+            let event = match event {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("{e}");
+                    continue;
+                }
+            };
+
+            match event {
+                AudioPlayerCommands::TogglePause => self.toggle_pause_song(),
+                AudioPlayerCommands::NextSong => self.channel_handle = self.next_song(),
+                AudioPlayerCommands::PrevSong => self.channel_handle = self.prev_song(),
+                AudioPlayerCommands::SetVol(v) => self.set_volume(v),
+                AudioPlayerCommands::Quit => break,
+            }
+        }
+
+        println!("Exiting");
+    }
+    pub fn next_song(
+        &mut self
+        ) -> soloud::Handle {
+        if self.current_song_index >= self.song_list.len() - 1 {
+            self.current_song_index = 0;
+        } else {
+            self.current_song_index += 1
+        }
+        let next_song_path_str = &format!(
+            "{AUDIO_FILES_PATH}{}",
+            self.song_list[self.current_song_index].clone()
+        );
+        let next_song_path = &std::path::Path::new(&next_song_path_str);
+        self.wav.load(next_song_path).expect(&format!(
+                "Failed to load song with path: {}",
+                next_song_path.to_str().unwrap()
+                ));
+
+        println!("Now Playing: {}", self.song_list[self.current_song_index]);
+        return self.sl.play(&self.wav);
     }
 
-    let next_song_path_str = &format!(
-        "{AUDIO_FILES_PATH}{}",
-        song_list[*current_song_index].clone()
-    );
-    let next_song_path = &std::path::Path::new(&next_song_path_str);
-    wav.load(next_song_path).expect(&format!(
-        "Failed to load song with path: {}",
-        next_song_path.to_str().unwrap()
-    ));
+    pub fn prev_song(
+        &mut self
+        ) -> soloud::Handle {
+        if self.current_song_index <= 0 {
+            self.current_song_index = self.song_list.len() - 1
+        } else {
+            self.current_song_index -= 1
+        }
 
-    println!("Now Playing: {}", song_list[*current_song_index]);
-    return sl.play(wav);
+        let next_song_path_str = &format!(
+            "{AUDIO_FILES_PATH}{}",
+            self.song_list[self.current_song_index].clone()
+        );
+        let next_song_path = &std::path::Path::new(&next_song_path_str);
+        self.wav.load(next_song_path).expect(&format!(
+                "Failed to load song with path: {}",
+                next_song_path.to_str().unwrap()
+                ));
+
+        println!("Now Playing: {}", self.song_list[self.current_song_index]);
+        return self.sl.play(&self.wav);
+    }
+
+    pub fn toggle_pause_song(&mut self) {
+        self.sl.set_pause_all(!self.pause_state);
+        self.pause_state = !self.pause_state;
+    }
+
+    pub fn set_volume(&mut self, new_vol: f32) {
+        self.sl.set_volume(self.channel_handle, new_vol);
+    }
 }
 
-pub fn toggle_pause_song(sl: &mut Soloud, pause_state: bool) -> bool {
-    sl.set_pause_all(!pause_state);
-    return !pause_state;
-}
-
-pub fn set_volume(sl: &mut Soloud, channel_handle: soloud::Handle, new_vol: f32) {
-    sl.set_volume(channel_handle, new_vol);
-}
