@@ -65,8 +65,14 @@ impl AudioPlayer {
 
             match event {
                 AudioPlayerCommands::TogglePause => self.toggle_pause_song(),
-                AudioPlayerCommands::NextSong => self.channel_handle = self.next_song(),
-                AudioPlayerCommands::PrevSong => self.channel_handle = self.prev_song(),
+                AudioPlayerCommands::NextSong => {
+                    self.channel_handle = self.next_song();
+                    self.set_volume(self.vol_state);
+                },
+                AudioPlayerCommands::PrevSong => {
+                    self.channel_handle = self.prev_song();
+                    self.set_volume(self.vol_state);
+                },
                 AudioPlayerCommands::SetVol(v) => self.set_volume(v),
                 AudioPlayerCommands::Quit => break,
             }
@@ -91,6 +97,7 @@ impl AudioPlayer {
         ));
 
         println!("Now Playing: {}", self.song_list[self.current_song_index]);
+
         return self.sl.play(&self.wav);
     }
 
@@ -122,5 +129,6 @@ impl AudioPlayer {
 
     pub fn set_volume(&mut self, new_vol: f32) {
         self.sl.set_volume(self.channel_handle, new_vol);
+        self.vol_state = new_vol;
     }
 }
